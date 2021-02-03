@@ -1,23 +1,33 @@
 #ifndef _SHTC3_H
 #define _SHTC3_H
+#include <bcm2835.h>
 
-//i2c address
-#define SHTC3_I2C_ADDRESS	    	0x70
+// i2c address
+#define SHTC3_I2C_ADDRESS 0x70
 
-//Commands
-#define SHTC3_WakeUp                0x3517
-#define SHTC3_Sleep                 0xB098
-#define SHTC3_NM_CE_ReadTH          0x7CA2
-#define SHTC3_NM_CE_ReadRH          0x5C24
-#define SHTC3_NM_CD_ReadTH          0x7866
-#define SHTC3_NM_CD_ReadRH          0x58E0
-#define SHTC3_LM_CE_ReadTH          0x6458
-#define SHTC3_LM_CE_ReadRH          0x44DE
-#define SHTC3_LM_CD_ReadTH          0x609C
-#define SHTC3_LM_CD_ReadRH          0x401A
-#define SHTC3_Software_RES          0x401A
-#define SHTC3_ID               0xEFC8
+// Commands
+#define SHTC3_WakeUp 0x3517
+#define SHTC3_Sleep 0xB098
+#define SHTC3_NM_CE_ReadTH 0x7CA2
+#define SHTC3_NM_CE_ReadRH 0x5C24
+#define SHTC3_NM_CD_ReadTH 0x7866
+#define SHTC3_NM_CD_ReadRH 0x58E0
+#define SHTC3_LM_CE_ReadTH 0x6458
+#define SHTC3_LM_CE_ReadRH 0x44DE
+#define SHTC3_LM_CD_ReadTH 0x609C
+#define SHTC3_LM_CD_ReadRH 0x401A
+#define SHTC3_Software_RES 0x401A
+#define SHTC3_ID 0xEFC8
 
-#define CRC_POLYNOMIAL              0x131 // P(x) = x^8 + x^5 + x^4 + 1 = 100110001
+#define CRC_POLYNOMIAL 0x131 // P(x) = x^8 + x^5 + x^4 + 1 = 100110001
+
+float TH_Value, RH_Value;
+char checksum;
+char SHTC3_CheckCrc(char data[], uint8_t len, uint8_t checksum);
+uint8_t SHTC3_WriteCommand(unsigned short cmd);
+uint8_t SHTC3_WAKEUP();
+uint8_t SHTC3_SLEEP();
+uint8_t SHTC_SOFT_RESET();
+uint8_t SHTC3_Read_DATA();
 
 #endif
