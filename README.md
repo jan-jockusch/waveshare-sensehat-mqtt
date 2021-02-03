@@ -16,3 +16,5 @@ References:
 http://www.airspayce.com/mikem/bcm2835/index.html
 
 https://github.com/matthiasbock/bcm2835
+
+https://www.waveshare.com/wiki/Sense_HAT_(B)
