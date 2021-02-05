@@ -1,5 +1,7 @@
 # MQTT Publishers for the Waveshare Sense HAT B for Raspberry Pi
 
+**Note: this is unfinished work.**
+
 This project attempts to turn the rather crude sensor readers provided as
 example code with the Waveshare Sense HAT into an MQTT publisher using the
 mosquitto library.
