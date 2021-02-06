@@ -35,6 +35,8 @@ class MQTTPubSub:
         self.client.on_connect = MQTTPubSub.on_connect
         self.client.on_message = MQTTPubSub.on_message
         self.client.connect(self.hostname, self.port, 60)
+        self.client.loop_start()
+        self.alive = 'on'
         logging.info("Init complete")
 
     @property
@@ -51,9 +53,6 @@ class MQTTPubSub:
         )
 
     def __enter__(self):
-        self.client.loop_start()
-        self.alive = 'on'
-        logging.info("Loop started")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -93,18 +92,26 @@ class MQTTPubSub:
         userdata.alive = payload['value']
         return
 
-    def run(self):
-        while mqttc.alive != 'dead':
-            if self.alive == 'on':
-                self.client.publish(
-                    self.base_topic + '/random',
-                    json.dumps(random.choice(['A', 'B', 'C']))
-                )
-            time.sleep(1)
+    def publish(self, subtopic, json_payload):
+        '''Publishing wrapper which automatically encodes the data structure
+        in a compliant way.
+        '''
+        self.client.publish(
+            topic=self.base_topic + '/' + subtopic,
+            payload=json.dumps(json_payload).encode('utf-8'),
+            retain=False,
+            qos=0,
+        )
 
 
 if __name__ == '__main__':
     with MQTTPubSub(
         base_topic='example'
     ) as mqttc:
-        mqttc.run()
+        while mqttc.alive != 'dead':
+            if mqttc.alive == 'on':
+                mqttc.publish(
+                    'random',
+                    random.choice(['A', 'B', 'C'])
+                )
+            time.sleep(1)
