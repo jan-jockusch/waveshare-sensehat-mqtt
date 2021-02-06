@@ -11,7 +11,7 @@ class MQTTPubSub:
     '''
 
     def __init__(self, hostname='localhost', port=1883, base_topic='example',
-                 state_topic='state'):
+                 state_topic='state', queue=None):
         self.hostname = hostname
         self.port = port
         self.base_topic = base_topic
@@ -19,6 +19,7 @@ class MQTTPubSub:
         self.state_set_topic = (
             self.base_topic + '/' + self.state_topic + '/set'
         )
+        self.queue = queue
 
         self.is_alive = 'dead'
         self.client = paho.mqtt.client.Client()
@@ -87,8 +88,7 @@ class MQTTPubSub:
             }
         logging.debug("Message received: {} = {}".format(msg.topic, payload))
 
-        # TODO: Here, we must react on the topic. And we need a way to hook
-        # in custom message handling.
+        # Handle the built-in "state" topic
         if msg.topic == userdata.state_set_topic:
             if not isinstance(payload['value'], str):
                 logging.error("Rejecting value because it is not a string.")
@@ -97,6 +97,15 @@ class MQTTPubSub:
                 logging.error("Invalid state. Must be dead, on, or off")
                 return
             userdata.alive = payload['value']
+            return
+
+        # Place the message into the given queue to allow processing in the
+        # main loop
+        if userdata.queue is not None:
+            userdata.queue.put_nowait({
+                'topic': msg.topic,
+                'payload': payload,
+            })
         return
 
     def publish(self, subtopic, json_payload):

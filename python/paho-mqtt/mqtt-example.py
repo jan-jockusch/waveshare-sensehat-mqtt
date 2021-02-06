@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import time
+import asyncio
 import random
 import logging
 import sys
@@ -9,14 +9,22 @@ from mqttsubpub import MQTTPubSub
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
-if __name__ == '__main__':
+async def main():
+    queue = asyncio.Queue()
+
     with MQTTPubSub(
-        base_topic='example'
+        base_topic='example',
+        queue=queue,
     ) as mqttc:
+
         while mqttc.alive != 'dead':
             if mqttc.alive == 'on':
                 mqttc.publish(
                     'random',
                     random.choice(['A', 'B', 'C'])
                 )
-            time.sleep(1)
+            await asyncio.sleep(1)
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
