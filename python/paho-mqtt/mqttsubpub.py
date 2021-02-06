@@ -2,6 +2,7 @@ import paho.mqtt.client
 import json
 import json.decoder
 import logging
+import time
 
 
 class MQTTPubSub:
@@ -15,6 +16,9 @@ class MQTTPubSub:
         self.port = port
         self.base_topic = base_topic
         self.state_topic = state_topic
+        self.state_set_topic = (
+            self.base_topic + '/' + self.state_topic + '/set'
+        )
 
         self.is_alive = 'dead'
         self.client = paho.mqtt.client.Client()
@@ -28,7 +32,13 @@ class MQTTPubSub:
         self.client.on_message = MQTTPubSub.on_message
         self.client.connect(self.hostname, self.port, 60)
         self.client.loop_start()
-        self.alive = 'on'
+
+        # Wait for connect
+        while self.alive == 'dead':
+            time.sleep(0.1)
+
+        self.client.subscribe(self.state_set_topic)
+
         logging.info("Init complete")
 
     @property
@@ -55,8 +65,10 @@ class MQTTPubSub:
 
     @staticmethod
     def on_connect(client, userdata, flags, rc):
-        client.subscribe(
-            userdata.base_topic + '/' + userdata.state_topic + '/set')
+        if rc != 0:
+            logging.error("Connection refused, error code " + repr(rc))
+            raise ValueError("Connection refused")
+        userdata.alive = 'on'
         logging.info("Connected")
 
     @staticmethod
@@ -75,13 +87,16 @@ class MQTTPubSub:
             }
         logging.debug("Message received: {} = {}".format(msg.topic, payload))
 
-        if not isinstance(payload['value'], str):
-            logging.error("Rejecting value because it is not a string.")
-            return
-        if payload['value'] not in ('dead', 'on', 'off'):
-            logging.error("Invalid state. Must be dead, on, or off")
-            return
-        userdata.alive = payload['value']
+        # TODO: Here, we must react on the topic. And we need a way to hook
+        # in custom message handling.
+        if msg.topic == userdata.state_set_topic:
+            if not isinstance(payload['value'], str):
+                logging.error("Rejecting value because it is not a string.")
+                return
+            if payload['value'] not in ('dead', 'on', 'off'):
+                logging.error("Invalid state. Must be dead, on, or off")
+                return
+            userdata.alive = payload['value']
         return
 
     def publish(self, subtopic, json_payload):
@@ -94,3 +109,8 @@ class MQTTPubSub:
             retain=False,
             qos=0,
         )
+
+    def subscribe(self, topic):
+        '''Simple subscribe wrapper just to shorten calls.
+        '''
+        self.client.subscribe(topic)
