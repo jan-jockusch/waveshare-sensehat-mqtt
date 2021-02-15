@@ -10,24 +10,22 @@ class MQTTPubSub:
     clients easier.
     '''
 
-    def __init__(self, hostname='localhost', port=1883, base_topic='example',
-                 state_topic='state', queue=None):
+    def __init__(self, hostname='localhost', port=1883, queue=None,
+                 lwt_topic=None, lwt_payload='lwt'):
         self.hostname = hostname
         self.port = port
-        self.base_topic = base_topic
-        self.state_topic = state_topic
-        self.state_set_topic = (
-            self.base_topic + '/' + self.state_topic + '/set'
-        )
         self.queue = queue
+        self.lwt_topic = lwt_topic
+        self.lwt_payload = lwt_payload
 
-        self.is_alive = 'dead'
+        self.is_connected = False
         self.client = paho.mqtt.client.Client()
-        self.client.will_set(
-            topic=self.base_topic + '/' + self.state_topic,
-            payload=json.dumps(self.is_alive),
-            retain=True,
-        )
+        if self.lwt_topic:
+            self.client.will_set(
+                topic=self.lwt_topic,
+                payload=self.lwt_payload,
+                retain=True,
+            )
         self.client.user_data_set(self)
         self.client.on_connect = MQTTPubSub.on_connect
         self.client.on_message = MQTTPubSub.on_message
@@ -35,41 +33,27 @@ class MQTTPubSub:
         self.client.loop_start()
 
         # Wait for connect
-        while self.alive == 'dead':
+        while not self.is_connected:
             time.sleep(0.1)
-
-        self.client.subscribe(self.state_set_topic)
-
         logging.info("Init complete")
 
-    @property
-    def alive(self):
-        return self.is_alive
-
-    @alive.setter
-    def alive(self, status):
-        self.is_alive = status
-        self.client.publish(
-            topic=(self.base_topic + '/' + self.state_topic),
-            payload=json.dumps(self.is_alive),
-            retain=True,
-        )
+    def disconnect(self):
+        self.client.loop_stop()
+        self.client.disconnect()
+        logging.info("Disconnect done")
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.alive = 'dead'
-        self.client.loop_stop()
-        self.client.disconnect()
-        logging.info("Disconnect done")
+        self.disconnect()
 
     @staticmethod
     def on_connect(client, userdata, flags, rc):
         if rc != 0:
             logging.error("Connection refused, error code " + repr(rc))
             raise ValueError("Connection refused")
-        userdata.alive = 'on'
+        userdata.is_connected = True
         logging.info("Connected")
 
     @staticmethod
@@ -88,17 +72,6 @@ class MQTTPubSub:
             }
         logging.debug("Message received: {} = {}".format(msg.topic, payload))
 
-        # Handle the built-in "state" topic
-        if msg.topic == userdata.state_set_topic:
-            if not isinstance(payload['value'], str):
-                logging.error("Rejecting value because it is not a string.")
-                return
-            if payload['value'] not in ('dead', 'on', 'off'):
-                logging.error("Invalid state. Must be dead, on, or off")
-                return
-            userdata.alive = payload['value']
-            return
-
         # Place the message into the given queue to allow processing in the
         # main loop
         if userdata.queue is not None:
@@ -108,15 +81,15 @@ class MQTTPubSub:
             })
         return
 
-    def publish(self, subtopic, json_payload):
+    def publish(self, topic, payload, retain=False, qos=0):
         '''Publishing wrapper which automatically encodes the data structure
         in a compliant way.
         '''
         self.client.publish(
-            topic=self.base_topic + '/' + subtopic,
-            payload=json.dumps(json_payload).encode('utf-8'),
-            retain=False,
-            qos=0,
+            topic=topic,
+            payload=json.dumps(payload).encode('utf-8'),
+            retain=retain,
+            qos=qos,
         )
 
     def subscribe(self, topic):
