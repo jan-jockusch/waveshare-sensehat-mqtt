@@ -8,6 +8,10 @@ import time
 class MQTTPubSub:
     '''Publisher and Subscriber class which makes building simple MQTT
     clients easier.
+
+    This class enforces using UTF-8 encoded JSON as the payload.
+    TODO: Perhaps this mandatory conversion is too strict and should be
+    optional.
     '''
 
     def __init__(self, hostname='localhost', port=1883, queue=None,
@@ -29,13 +33,15 @@ class MQTTPubSub:
         self.client.user_data_set(self)
         self.client.on_connect = MQTTPubSub.on_connect
         self.client.on_message = MQTTPubSub.on_message
+        logging.info("Init complete")
+
+    def connect(self):
         self.client.connect(self.hostname, self.port, 60)
         self.client.loop_start()
-
         # Wait for connect
         while not self.is_connected:
             time.sleep(0.1)
-        logging.info("Init complete")
+        logging.info("Connected")
 
     def disconnect(self):
         self.client.loop_stop()
@@ -43,6 +49,7 @@ class MQTTPubSub:
         logging.info("Disconnect done")
 
     def __enter__(self):
+        self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -59,13 +66,17 @@ class MQTTPubSub:
     @staticmethod
     def on_message(client, userdata, msg):
         try:
-            payload = json.loads(msg.payload.decode("utf-8"))
-        except json.decoder.JSONDecodeError:
-            logging.exception("Message needs to be valid JSON")
-            return
+            payload_decoded = msg.payload.decode('utf-8')
         except UnicodeDecodeError:
-            logging.exception("Message needs to be UTF-8 encoded")
-            return
+            logging.info("Non-UTF-8 string found. Using binary value")
+            payload = msg.payload
+        else:
+            try:
+                payload = json.loads(payload_decoded)
+            except json.decoder.JSONDecodeError:
+                logging.info("Invalid JSON found. Using string value")
+                payload = payload_decoded
+
         if not isinstance(payload, dict):
             payload = {
                 'value': payload,
