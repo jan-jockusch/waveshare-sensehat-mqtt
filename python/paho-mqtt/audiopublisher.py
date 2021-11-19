@@ -6,22 +6,52 @@ import logging
 import sys
 import pyaudio
 import functools
+import struct
 from mqttsubpub import MQTTPubSub
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
 def callback(mqttc, in_data, frame_count, time_info, flag):
-    audio_data = in_data
-    print(frame_count, audio_data[0:10])
+    # audio_data = numpy.frombuffer(in_data, dtype=numpy.float32).tolist()
+    audio_data = struct.unpack(frame_count * "h", in_data)
+    print(frame_count, audio_data[0:16])
     # Snip out 512 values expand from [-1:1] to [0:1024]
     # Pack into {"time": "2021-01-01T12:00:00", "data": {"ACCX": [...]}}
     # Publish on "mls160a/0/v"
+
     mqttc.publish(
         'data',
-        audio_data[0:128]
+        audio_data[0:16]
     )
-    return (audio_data, pyaudio.paContinue)
+    return (in_data, pyaudio.paContinue)
+
+
+stream = None
+audio_rate = 1024
+buffer_size = 1024
+paudio = pyaudio.PyAudio()
+valid_rates = [1024, 2048, 4096, 32768, 65536, 48000, 44100]
+
+def start(mqttc):
+    global stream
+    stop()
+    stream = paudio.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=audio_rate,
+        frames_per_buffer=buffer_size,
+        input=True,
+        stream_callback=functools.partial(callback, mqttc),
+    )
+
+
+def stop():
+    global stream
+    if stream is not None:
+        stream.stop_stream()
+        stream.close()
+        stream = None
 
 
 async def main():
@@ -32,31 +62,43 @@ async def main():
         lwt_topic='example/lwt',
         queue=queue,
     ) as mqttc:
+        start(mqttc)
 
         tasks = []  # List of asyncio tasks
-
-        paudio = pyaudio.PyAudio()
-        stream = paudio.open(
-            format=pyaudio.paFloat32,
-            channels=1,
-            rate=1024,
-            # output=True,
-            input=True,
-            stream_callback=functools.partial(callback, mqttc),
-        )
 
         # The following block adds an async command handler
         mqttc.subscribe('example/command')
         mqttc.subscribe('example/state/set')
 
         async def handle_command(queue):
+            global audio_rate, buffer_size
+
             while True:
                 message = await queue.get()
-                print(message)
+                logging.debug(message)
 
                 if message['topic'] == 'example/state/set':
-                    if message['payload']['value'] == 'dead':
+                    state = message['payload']
+                    if state['value'] == 'dead':
+                        logging.debug('DIE')
                         death_event.put_nowait('Your time has come')
+
+                    if 'rate' in state and state['rate'].isdigit():
+                        rate = int(state['rate'])
+                        if rate in valid_rates:
+                            audio_rate = rate
+                            stop()
+                    if 'bufsize' in state and state['bufsize'].isdigit():
+                        bufsize = int(state['bufsize'])
+                        if bufsize <= audio_rate:
+                            buffer_size = bufsize
+                            stop()
+
+                if message['topic'] == 'example/command':
+                    if message['payload']['value'] == 'start':
+                        start(mqttc)
+                    if message['payload']['value'] == 'stop':
+                        stop()
 
                 queue.task_done()
 
@@ -66,8 +108,8 @@ async def main():
         async def send_status():
             while True:
                 mqttc.publish(
-                    'random',
-                    random.choice(['A', 'B', 'C'])
+                    'example/state',
+                    stream is None and "idle" or "streaming"
                 )
                 await asyncio.sleep(1)
 
@@ -80,8 +122,7 @@ async def main():
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-        stream.stop_stream()
-        stream.close()
+        stop()
         paudio.terminate()
 
 
