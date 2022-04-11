@@ -1,5 +1,5 @@
 import numpy as np
-from scipy import signal
+from scipy import signal, fft
 import matplotlib.pyplot as plt
 
 
@@ -24,6 +24,12 @@ noise *= np.exp(-time/5)
 x = carrier + noise
 
 f, t, Zxx = signal.stft(x, fs, nperseg=256, boundary=None)
+hann = signal.windows.hann(257)
+fft_output = fft.fft(
+    x * hann,  # input array
+)
+print(hann)
+print(fft_output)
 
 plt.pcolormesh(t, f, np.abs(Zxx), vmin=0, vmax=amp, )  # shading='gouraud')
 plt.title('STFT Magnitude')
